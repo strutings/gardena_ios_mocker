@@ -1,0 +1,47 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Konfigurer Gardena iOS Mocker",
+        "description": "Skriv inn din Gardena-kontorinfo for å hente ut lokasjon og enheter automatisk via BFF-API-et.",
+        "data": {
+          "username": "E-postadresse",
+          "password": "Passord"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kunne ikke koble til Gardenas servere. Sjekk brukernavn, passord og nettverk."
+    }
+  },
+  "entity": {
+    "switch": {
+      "eco_mode": {
+        "name": "Eco-modus"
+      },
+      "mower_house": {
+        "name": "Garasjebeskyttelse"
+      },
+      "watering_switch": {
+        "name": "Vanning"
+      }
+    },
+    "number": {
+      "drive_past_wire": {
+        "name": "Kjøre over grensekabel"
+      },
+      "starting_distance": {
+        "name": "Fjernstart startavstand"
+      },
+      "distance_in_meters": {
+        "name": "Startpunkt avstand"
+      },
+      "probability_in_percent": {
+        "name": "Startpunkt fordeling"
+      },
+      "irrigation_time": {
+        "name": "Vanningstid"
+      }
+    }
+  }
+}

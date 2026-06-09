@@ -1,0 +1,47 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure Gardena iOS Mocker",
+        "description": "Enter your Gardena account credentials to automatically fetch your location and devices via the BFF API.",
+        "data": {
+          "username": "Email address",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Gardena servers. Please check your username, password, and network."
+    }
+  },
+  "entity": {
+    "switch": {
+      "eco_mode": {
+        "name": "Eco Mode"
+      },
+      "mower_house": {
+        "name": "Garage Protection"
+      },
+      "watering_switch": {
+        "name": "Irrigation"
+      }
+    },
+    "number": {
+      "drive_past_wire": {
+        "name": "Drive past wire"
+      },
+      "starting_distance": {
+        "name": "Remote start distance"
+      },
+      "distance_in_meters": {
+        "name": "Starting point distance"
+      },
+      "probability_in_percent": {
+        "name": "Starting point proportion"
+      },
+      "irrigation_time": {
+        "name": "Irrigation duration"
+      }
+    }
+  }
+}

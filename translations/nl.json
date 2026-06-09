@@ -1,0 +1,47 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Gardena iOS Mocker configureren",
+        "description": "Voer uw Gardena-accountgegevens in om automatisch uw locatie en apparaten op te halen via de BFF-API.",
+        "data": {
+          "username": "E-mailadres",
+          "password": "Wachtwoord"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Kan geen verbinding maken met de Gardena-servers. Controleer uw gebruikersnaam, wachtwoord en netwerk."
+    }
+  },
+  "entity": {
+    "switch": {
+      "eco_mode": {
+        "name": "Eco-modus"
+      },
+      "mower_house": {
+        "name": "Garagebescherming"
+      },
+      "watering_switch": {
+        "name": "Bewatering"
+      }
+    },
+    "number": {
+      "drive_past_wire": {
+        "name": "Over de grensdraad rijden"
+      },
+      "starting_distance": {
+        "name": "Afstand voor externe start"
+      },
+      "distance_in_meters": {
+        "name": "Afstand startpunt"
+      },
+      "probability_in_percent": {
+        "name": "Verdeling startpunt"
+      },
+      "irrigation_time": {
+        "name": "Bewateringsduur"
+      }
+    }
+  }
+}

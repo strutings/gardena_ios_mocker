@@ -1,0 +1,47 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Konfigurácia Gardena iOS Mocker",
+        "description": "Zadajte svoje prihlasovacie údaje k účtu Gardena na automatické načítanie polohy a zariadení cez BFF API.",
+        "data": {
+          "username": "E-mailová adresa",
+          "password": "Heslo"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Nepodarilo sa pripojiť k serverom Gardena. Skontrolujte používateľské meno, heslo a sieť."
+    }
+  },
+  "entity": {
+    "switch": {
+      "eco_mode": {
+        "name": "Eko režim"
+      },
+      "mower_house": {
+        "name": "Ochrana garáže"
+      },
+      "watering_switch": {
+        "name": "Zavlažovanie"
+      }
+    },
+    "number": {
+      "drive_past_wire": {
+        "name": "Prejazd cez ohraničujúci kábel"
+      },
+      "starting_distance": {
+        "name": "Vzdialenosť vzdialeného štartu"
+      },
+      "distance_in_meters": {
+        "name": "Vzdialenosť počiatočného bodu"
+      },
+      "probability_in_percent": {
+        "name": "Podiel počiatočného bodu"
+      },
+      "irrigation_time": {
+        "name": "Doba zavlažovania"
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "domain": "gardena_ios_mocker",
+  "name": "Gardena iOS Mocker",
+  "documentation": "https://github.com/custom-components/gardena_ios_mocker",
+  "dependencies": [],
+  "codeowners": ["@eirikskorstad"],
+  "requirements": [],
+  "version": "1.1.0",
+  "iot_class": "cloud_polling",
+  "config_flow": true
+}
