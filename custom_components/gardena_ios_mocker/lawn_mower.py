@@ -31,6 +31,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class GardenaMower(CoordinatorEntity, LawnMowerEntity):
     """Representation of a controllable Gardena mower."""
 
+    has_entity_name = True
+
     def __init__(self, coordinator, device, entry):
         super().__init__(coordinator)
         self._device_id = device.get("id")
@@ -38,7 +40,7 @@ class GardenaMower(CoordinatorEntity, LawnMowerEntity):
         self._entry = entry
         
         self._attr_unique_id = f"{self._device_id}_mower"
-        self._attr_name = self._device_name
+        self._attr_name = None  # None gjør at den arver hovednavnet til enheten automatisk
         self._attr_supported_features = (
             LawnMowerEntityFeature.START_MOWING
             | LawnMowerEntityFeature.PAUSE
@@ -121,13 +123,14 @@ class GardenaMower(CoordinatorEntity, LawnMowerEntity):
             "X-Api-Key": CLIENT_ID,
             "X-Key": CLIENT_ID,
             "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15"
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Cargo 5.0.1"
         }
 
         try:
             async with manager.session.put(url, json=payload, headers=headers, timeout=10) as response:
                 if response.status in [200, 202, 204]:
-                    _LOGGER.info("Successfully updated mower schedule state to: %s", target_state if target_value else "RESUME/START")
+                    # RETTET: Endret fra target_state til target_value for å unngå NameError krasj
+                    _LOGGER.info("Successfully updated mower schedule state to: %s", target_value if target_value else "RESUME/START")
                     self.hass.async_create_task(self.coordinator.async_request_refresh())
                 else:
                     resp_txt = await response.text()

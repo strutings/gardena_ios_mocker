@@ -1,7 +1,8 @@
 import logging
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, LIGHT_LUX, UnitOfTemperature, EntityCategory
+from homeassistant.helpers.entity import EntityCategory
+from homeassistant.const import PERCENTAGE, LIGHT_LUX, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -29,11 +30,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                 prop_name = prop.get("name")
                 unit = prop.get("unit")
                 
-                # Skip binary statuses (these are handled in binary_sensor.py)
+                # Skip binary statuses (handled in binary_sensor.py)
                 if prop_name in ["connection_status", "emergency_stop", "valve_open"]:
                     continue
 
-                # Define sensor configuration dynamically based on API data
                 unit_of_measurement = None
                 device_class = None
                 icon = None
@@ -57,22 +57,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                     device_class = SensorDeviceClass.DURATION
                     icon = "mdi:timer-sand"
                 
-                # Specific icons for known Gardena states
+                # Dynamic category assignments
+                if prop_name in ["version", "serial", "update_state", "initialized"]:
+                    entity_category = EntityCategory.DIAGNOSTIC
+
+                # Set specific icons for known types
                 if prop_name == "humidity":
                     device_class = SensorDeviceClass.HUMIDITY
                 elif prop_name == "status":
                     icon = "mdi:robot-mower"
                 elif prop_name == "activity":
                     icon = "mdi:valve"
-                elif prop_name in ["version", "serial", "update_state"]:
-                    entity_category = EntityCategory.DIAGNOSTIC
-                    icon = "mdi:information-outline"
 
-                name_suffix = prop_name.replace("_", " ").title()
+                # Generate a clean fallback name from the property key (e.g. "ok_cutting" -> "Ok Cutting")
+                fallback_name = prop_name.replace("_", " ").title()
+
                 entities.append(
                     GardenaDynamicSensor(
                         coordinator, device_id, device_name, ability_type, 
-                        prop_name, name_suffix, unit_of_measurement, device_class, icon, entity_category
+                        prop_name, fallback_name, unit_of_measurement, device_class, icon, entity_category
                     )
                 )
 
@@ -80,9 +83,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 
 class GardenaDynamicSensor(CoordinatorEntity, SensorEntity):
-    """Dynamic sensor for Gardena properties."""
+    """Dynamic sensor for monitoring individual Gardena telemetry properties."""
 
-    def __init__(self, coordinator, device_id, device_name, ability_type, prop_name, name_suffix, unit, device_class, icon, entity_category):
+    # FIXED: We drop has_entity_name for the purely dynamic sensor list 
+    # to guarantee HA doesn't overwrite the names with the Device Name (Laila)
+    has_entity_name = False
+
+    def __init__(self, coordinator, device_id, device_name, ability_type, prop_name, fallback_name, unit, device_class, icon, entity_category):
+        """Initialize the dynamic sensor state tracking instance."""
         super().__init__(coordinator)
         self._device_id = device_id
         self._device_name = device_name
@@ -90,7 +98,11 @@ class GardenaDynamicSensor(CoordinatorEntity, SensorEntity):
         self._prop_name = prop_name
         
         self._attr_unique_id = f"{device_id}_{ability_type}_{prop_name}"
-        self._attr_name = f"{device_name} {name_suffix}"
+        
+        # FIXED: We explicitly generate the name as "Device Name + Property Name" 
+        # so HA never defaults back to just the device name string.
+        self._attr_name = f"{device_name} {fallback_name}"
+        
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = device_class
         self._attr_icon = icon
@@ -98,7 +110,7 @@ class GardenaDynamicSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self):
-        """Fetch the value dynamically from the coordinator data."""
+        """Fetch the value dynamically from the coordinator data cache."""
         devices = self.coordinator.data.get("devices", [])
         for d in devices:
             if d.get("id") == self._device_id:
@@ -114,6 +126,7 @@ class GardenaDynamicSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_info(self):
+        """Return cross-platform link pointers attaching entities to their master device entry."""
         return {
             "identifiers": {(DOMAIN, self._device_id)},
             "name": self._device_name,

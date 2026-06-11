@@ -37,6 +37,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class GardenaMowerSensorControlSelect(CoordinatorEntity, SelectEntity):
     """Select entity to control Gardena SensorControl cloud smartlet levels and activation state."""
 
+    has_entity_name = True
+
     def __init__(self, coordinator: Any, device_id: str, device_name: str, entry: ConfigEntry) -> None:
         """Initialize the robotic mower growth sensitivity level select control entity."""
         super().__init__(coordinator)
@@ -45,7 +47,7 @@ class GardenaMowerSensorControlSelect(CoordinatorEntity, SelectEntity):
         self._entry = entry
         
         self._attr_unique_id = f"{device_id}_smartlet_sensor_control"
-        self._attr_name = f"{device_name} SensorControl"
+        self._attr_translation_key = "sensor_control"
         self._attr_icon = "mdi:grass"
         self._attr_options = ["Off", "Low", "Medium", "High"]
         

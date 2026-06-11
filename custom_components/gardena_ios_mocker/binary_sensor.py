@@ -1,7 +1,8 @@
 import logging
 from homeassistant.components.binary_sensor import BinarySensorEntity, BinarySensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
+# RETTET: EntityCategory må importeres fra helpers.entity i nyere HA-versjoner
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -42,10 +43,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
                     elif prop_name == "valve_open":
                         device_class = BinarySensorDeviceClass.OPEN
 
-                    name_suffix = prop_name.replace("_", " ").title()
                     entities.append(
                         GardenaDynamicBinarySensor(
-                            coordinator, device_id, device_name, ability_type, prop_name, name_suffix, device_class, entity_category
+                            coordinator, device_id, device_name, ability_type, prop_name, device_class, entity_category
                         )
                     )
 
@@ -55,7 +55,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class GardenaDynamicBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """Dynamic binary sensor for Gardena properties."""
 
-    def __init__(self, coordinator, device_id, device_name, ability_type, prop_name, name_suffix, device_class, entity_category):
+    has_entity_name = True
+
+    def __init__(self, coordinator, device_id, device_name, ability_type, prop_name, device_class, entity_category):
         super().__init__(coordinator)
         self._device_id = device_id
         self._device_name = device_name
@@ -63,7 +65,8 @@ class GardenaDynamicBinarySensor(CoordinatorEntity, BinarySensorEntity):
         self._prop_name = prop_name
         
         self._attr_unique_id = f"{device_id}_{ability_type}_{prop_name}_binary"
-        self._attr_name = f"{device_name} {name_suffix}"
+        # RETTET: Bruker translation_key og lar navnet styres av HA sin kjerne/en.json
+        self._attr_translation_key = prop_name
         self._attr_device_class = device_class
         self._attr_entity_category = entity_category
 

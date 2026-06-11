@@ -31,15 +31,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             ability_type = ability.get("type")
 
             if ability_type == "robotic_mower":
-                entities.append(GardenaMowerConfigNumber(coordinator, device_id, device_name, "drive_past_wire", "Drive Past Wire", 1, 50, "cm", "mdi:arrow-expand-horizontal", entry))
-                entities.append(GardenaMowerConfigNumber(coordinator, device_id, device_name, "starting_distance", "Remote Start Distance", 0, 500, "m", "mdi:map-marker-distance", entry))
+                entities.append(GardenaMowerConfigNumber(coordinator, device_id, device_name, "drive_past_wire", 1, 50, "cm", "mdi:arrow-expand-horizontal", entry))
+                entities.append(GardenaMowerConfigNumber(coordinator, device_id, device_name, "starting_distance", 0, 500, "m", "mdi:map-marker-distance", entry))
                 
                 for i in range(3):
-                    entities.append(GardenaMowerPointNumber(coordinator, device_id, device_name, i, "distance_in_meters", f"Starting Point {i+1} Distance", 0, 500, "m", "mdi:ray-start-arrow", entry))
-                    entities.append(GardenaMowerPointNumber(coordinator, device_id, device_name, i, "probability_in_percent", f"Starting Point {i+1} Proportion", 0, 100, "%", "mdi:percent", entry))
+                    entities.append(GardenaMowerPointNumber(coordinator, device_id, device_name, i, "distance_in_meters", 0, 500, "m", "mdi:ray-start-arrow", entry))
+                    entities.append(GardenaMowerPointNumber(coordinator, device_id, device_name, i, "probability_in_percent", 0, 100, "%", "mdi:percent", entry))
 
             elif ability_type == "watering":
-                _LOGGER.info("Creating irrigation settings for %s", device_name)
+                _LOGGER.info("Creating irrigation settings parameters registry for device: %s", device_name)
                 
                 if f"{device_id}_duration" not in hass.data[DOMAIN]:
                     hass.data[DOMAIN][f"{device_id}_duration"] = 15
@@ -56,10 +56,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 
 class GardenaMowerConfigNumber(CoordinatorEntity, NumberEntity):
-    """Numerical configuration flag modifier for robotic mowers."""
+    """Numerical configuration flag modifier settings for robotic mowers."""
 
-    def __init__(self, coordinator, device_id, device_name, config_key, name_suffix, min_val, max_val, unit, icon, entry) -> None:
-        """Initialize the mower config configuration configuration entity."""
+    has_entity_name = True
+
+    def __init__(self, coordinator, device_id, device_name, config_key, min_val, max_val, unit, icon, entry) -> None:
+        """Initialize the mower configuration numerical entities framework handles."""
         super().__init__(coordinator)
         self._device_id = device_id
         self._device_name = device_name
@@ -67,7 +69,7 @@ class GardenaMowerConfigNumber(CoordinatorEntity, NumberEntity):
         self._entry = entry
         
         self._attr_unique_id = f"{device_id}_mower_number_{config_key}_real_api"
-        self._attr_name = f"{device_name} {name_suffix}"
+        self._attr_translation_key = config_key
         self._attr_native_min_value = min_val
         self._attr_native_max_value = max_val
         self._attr_native_step = 1
@@ -77,7 +79,7 @@ class GardenaMowerConfigNumber(CoordinatorEntity, NumberEntity):
 
     @property
     def native_value(self) -> float | None:
-        """Return the native state value fetched from coordinator cache."""
+        """Return the native numeric value extracted from the coordinator cache map pools."""
         devices = self.coordinator.data.get("devices", []) if isinstance(self.coordinator.data, dict) else []
         for d in devices:
             if isinstance(d, dict) and d.get("id") == self._device_id:
@@ -89,7 +91,9 @@ class GardenaMowerConfigNumber(CoordinatorEntity, NumberEntity):
     async def async_set_native_value(self, value: float) -> None:
         """Transmit updated value configuration down to the cloud infrastructure platform service endpoint."""
         manager = self.coordinator.api_manager
-        token = manager._token
+        
+        # FIXED: Secure live token verification loop
+        token = await manager.async_authenticate() if not manager._token else manager._token
         location_id = self._entry.data["location_id"]
         setting_id = None
         
@@ -104,7 +108,7 @@ class GardenaMowerConfigNumber(CoordinatorEntity, NumberEntity):
         if not setting_id:
             return
             
-        url = f"https://bff-api.sg.dss.husqvarnagroup.net/v1/locations/{location_id}/settings/{setting_id}"
+        url = f"https://bff-api.sg.dss.husqvarnagroup.net/v1/devices/{self._device_id}/settings/{setting_id}?locationId={location_id}"
         payload = {"settings": {"name": self._config_key, "value": int(value), "device": self._device_id}}
         headers = {
             "Authorization": f"Bearer {token}",
@@ -114,21 +118,27 @@ class GardenaMowerConfigNumber(CoordinatorEntity, NumberEntity):
         }
         try:
             async with manager.session.put(url, json=payload, headers=headers, timeout=10) as response:
-                if response.status in [200, 202, 204]: 
+                if response.status == 401:
+                    token = await manager.async_authenticate()
+                    headers["Authorization"] = f"Bearer {token}"
+                    await manager.session.put(url, json=payload, headers=headers, timeout=10)
+                elif response.status in [200, 202, 204]: 
                     self.hass.async_create_task(self.coordinator.async_request_refresh())
         except Exception as err:
             _LOGGER.error("Error modifying configuration key %s: %s", self._config_key, err)
 
     @property
     def device_info(self) -> dict[str, Any]:
-        """Return global cross-platform link descriptors."""
+        """Return global device link markers descriptors linking across integration components."""
         return {"identifiers": {(DOMAIN, self._device_id)}, "name": self._device_name}
 
 
 class GardenaMowerPointNumber(CoordinatorEntity, NumberEntity):
-    """Numerical state tracking entity to modify multi-point corridor configuration mappings."""
+    """Numerical entity modifier to adjust specific starting points navigation variables blocks."""
 
-    def __init__(self, coordinator, device_id, device_name, index, sub_key, name_suffix, min_val, max_val, unit, icon, entry) -> None:
+    has_entity_name = True
+
+    def __init__(self, coordinator, device_id, device_name, index, sub_key, min_val, max_val, unit, icon, entry) -> None:
         """Initialize remote start navigation segment points mapping configurations attributes."""
         super().__init__(coordinator)
         self._device_id = device_id
@@ -138,7 +148,7 @@ class GardenaMowerPointNumber(CoordinatorEntity, NumberEntity):
         self._entry = entry
         
         self._attr_unique_id = f"{device_id}_mower_point_{index}_{sub_key}_real_api"
-        self._attr_name = f"{device_name} {name_suffix}"
+        self._attr_translation_key = sub_key
         self._attr_native_min_value = min_val
         self._attr_native_max_value = max_val
         self._attr_native_step = 1
@@ -162,7 +172,7 @@ class GardenaMowerPointNumber(CoordinatorEntity, NumberEntity):
     async def async_set_native_value(self, value: float) -> None:
         """Synchronize deep array parameter mutations down onto the remote infrastructure platform tree map."""
         manager = self.coordinator.api_manager
-        token = manager._token
+        token = await manager.async_authenticate() if not manager._token else manager._token
         location_id = self._entry.data["location_id"]
         current_points = []
         setting_id = None
@@ -190,7 +200,11 @@ class GardenaMowerPointNumber(CoordinatorEntity, NumberEntity):
         }
         try:
             async with manager.session.put(url, json=payload, headers=headers, timeout=10) as response:
-                if response.status in [200, 202, 204]: 
+                if response.status == 401:
+                    token = await manager.async_authenticate()
+                    headers["Authorization"] = f"Bearer {token}"
+                    await manager.session.put(url, json=payload, headers=headers, timeout=10)
+                elif response.status in [200, 202, 204]: 
                     self.hass.async_create_task(self.coordinator.async_request_refresh())
         except Exception as err:
             _LOGGER.error("Error updating starting point configuration mapping matrix: %s", err)
@@ -204,6 +218,8 @@ class GardenaMowerPointNumber(CoordinatorEntity, NumberEntity):
 class GardenaIrrigationTime(CoordinatorEntity, NumberEntity):
     """Numerical configuration entity to adjust global manual valve irrigation target durations."""
 
+    has_entity_name = True
+
     def __init__(self, coordinator, device, ability, entry) -> None:
         """Initialize localized state engine storage descriptors attributes parameter targets handles."""
         super().__init__(coordinator)
@@ -212,7 +228,7 @@ class GardenaIrrigationTime(CoordinatorEntity, NumberEntity):
         self._entry = entry
         
         self._attr_unique_id = f"{self._device_id}_irrigation_time"
-        self._attr_name = f"{self._device_name} Irrigation Duration"
+        self._attr_translation_key = "irrigation_time"
         self._attr_icon = "mdi:clock-outline"
         self._attr_native_min_value = 1
         self._attr_native_max_value = 90
@@ -222,7 +238,7 @@ class GardenaIrrigationTime(CoordinatorEntity, NumberEntity):
 
     @property
     def native_value(self) -> float:
-        """Extract user-specified duration values straight from Home Assistant memory allocations storage engine maps."""
+        """Extract user-specified duration values straight from Home Assistant memory allocations."""
         return float(self.hass.data[DOMAIN].get(f"{self._device_id}_duration", 15))
 
     async def async_set_native_value(self, value: float) -> None:
@@ -239,6 +255,8 @@ class GardenaIrrigationTime(CoordinatorEntity, NumberEntity):
 class GardenaRainThresholdNumber(CoordinatorEntity, NumberEntity):
     """Slider interface modifier component mapping directly into smartlet cloud weather precipitation bounds layers."""
 
+    has_entity_name = True
+
     def __init__(self, coordinator, device_id, device_name, entry) -> None:
         """Initialize weather forecast threshold control entity."""
         super().__init__(coordinator)
@@ -247,7 +265,7 @@ class GardenaRainThresholdNumber(CoordinatorEntity, NumberEntity):
         self._entry = entry
         
         self._attr_unique_id = f"{device_id}_smartlet_rain_threshold"
-        self._attr_name = f"{device_name} Rain Weather Threshold"
+        self._attr_translation_key = "smartlet_rain_threshold"
         self._attr_icon = "mdi:water-percent"
         self._attr_native_min_value = 1
         self._attr_native_max_value = 10
@@ -267,7 +285,7 @@ class GardenaRainThresholdNumber(CoordinatorEntity, NumberEntity):
         self.async_write_ha_state()
 
         manager = self.coordinator.api_manager
-        token = manager._token
+        token = await manager.async_authenticate() if not manager._token else manager._token
         location_id = self._entry.data["location_id"]
         url = f"https://bff-api.sg.dss.husqvarnagroup.net/v1/locations/{location_id}/smartlets/{self._smartlet_id}"
         
@@ -302,7 +320,11 @@ class GardenaRainThresholdNumber(CoordinatorEntity, NumberEntity):
         }
         try:
             async with manager.session.put(url, json=payload, headers=headers, timeout=10) as response:
-                if response.status in [200, 202, 204]:
+                if response.status == 401:
+                    token = await manager.async_authenticate()
+                    headers["Authorization"] = f"Bearer {token}"
+                    await manager.session.put(url, json=payload, headers=headers, timeout=10)
+                elif response.status in [200, 202, 204]:
                     self.hass.async_create_task(self.coordinator.async_request_refresh())
         except Exception as err:
             _LOGGER.error("Failed to update rain weather cutoff parameter threshold matrix for %s: %s", self._device_name, err)
@@ -316,6 +338,8 @@ class GardenaRainThresholdNumber(CoordinatorEntity, NumberEntity):
 class GardenaSoilThresholdNumber(CoordinatorEntity, NumberEntity):
     """Slider controller parameter mapping bounds directly down onto the physical smartlet sensor array systems endpoints."""
 
+    has_entity_name = True
+
     def __init__(self, coordinator, device_id, device_name, entry) -> None:
         """Initialize soil moisture automated parameters threshold controls configuration mapping objects."""
         super().__init__(coordinator)
@@ -324,7 +348,7 @@ class GardenaSoilThresholdNumber(CoordinatorEntity, NumberEntity):
         self._entry = entry
         
         self._attr_unique_id = f"{device_id}_smartlet_soil_threshold"
-        self._attr_name = f"{device_name} Soil Moisture Threshold"
+        self._attr_translation_key = "smartlet_soil_threshold"
         self._attr_icon = "mdi:water-percent"
         self._attr_native_min_value = 5
         self._attr_native_max_value = 100
@@ -344,7 +368,7 @@ class GardenaSoilThresholdNumber(CoordinatorEntity, NumberEntity):
         self.async_write_ha_state()
 
         manager = self.coordinator.api_manager
-        token = manager._token
+        token = await manager.async_authenticate() if not manager._token else manager._token
         location_id = self._entry.data["location_id"]
         url = f"https://bff-api.sg.dss.husqvarnagroup.net/v1/locations/{location_id}/smartlets/{self._smartlet_id}"
         
@@ -389,7 +413,11 @@ class GardenaSoilThresholdNumber(CoordinatorEntity, NumberEntity):
         }
         try:
             async with manager.session.put(url, json=payload, headers=headers, timeout=10) as response:
-                if response.status in [200, 202, 204]:
+                if response.status == 401:
+                    token = await manager.async_authenticate()
+                    headers["Authorization"] = f"Bearer {token}"
+                    await manager.session.put(url, json=payload, headers=headers, timeout=10)
+                elif response.status in [200, 202, 204]:
                     self.hass.async_create_task(self.coordinator.async_request_refresh())
         except Exception as err:
             _LOGGER.error("Failed to update soil moisture target cutoff metric threshold parameter value settings for %s: %s", self._device_name, err)

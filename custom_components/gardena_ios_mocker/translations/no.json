@@ -31,7 +31,7 @@
       "smartlet_rain_forecast": {
         "name": "Smartlet Værbeskyttelse"
       },
-      "smartlet_soil_humidity": {
+      "smartlet_sensor": {
         "name": "Smartlet Jordfuktighetskontroll"
       }
     },
@@ -59,8 +59,50 @@
       }
     },
     "select": {
-      "smartlet_sensor_control": {
+      "sensor_control": {
         "name": "SensorControl"
+      }
+    },
+    "lawn_mower": {
+      "mower": {
+        "name": "Gressklipper"
+      }
+    },
+    "binary_sensor": {
+      "connection_status": {
+        "name": "Tilkoblingsstatus"
+      },
+      "emergency_stop": {
+        "name": "Nødstopp"
+      },
+      "valve_open": {
+        "name": "Ventilstatus"
+      }
+    },
+    "sensor": {
+      "battery_level": {
+        "name": "Batterinivå"
+      },
+      "humidity": {
+        "name": "Jordfuktighet"
+      },
+      "ambient_temperature": {
+        "name": "Lufttemperatur"
+      },
+      "light_intensity": {
+        "name": "Lysstyrke"
+      },
+      "status": {
+        "name": "Status"
+      },
+      "activity": {
+        "name": "Aktivitet"
+      },
+      "version": {
+        "name": "Firmware-versjon"
+      },
+      "serial": {
+        "name": "Serienummer"
       }
     }
   }

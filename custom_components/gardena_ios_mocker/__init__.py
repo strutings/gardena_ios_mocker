@@ -2,8 +2,10 @@ import logging
 from datetime import timedelta
 from typing import Any
 
+import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
+import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -48,6 +50,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         if service == "start_override":
             duration = call.data.get("duration", 180)
+            # FIXED: Changed string logging interpolation to use 'duration' instead of non-existent 'target_state'
             _LOGGER.info("Executing service override command: start_override with duration %s min", duration)
             await gardena_manager.async_send_raw_command("START", {"duration": int(duration)})
             
@@ -66,10 +69,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Force an immediate data refresh cycle after transmitting runtime commands
         hass.async_create_task(coordinator.async_request_refresh())
 
+    # FIXED: Added schema verification definitions for the override duration parameters block
     hass.services.async_register(
         DOMAIN, 
         "start_override", 
         handle_mower_service,
+        schema=vol.Schema({
+            vol.Optional("duration", default=180): cv.positive_int
+        }),
         supports_response=False
     )
     
@@ -152,7 +159,7 @@ class GardenaApiManager:
         devices_list = []
         smartlets_list = []
 
-        # 1. RETRIEVE CORE PHYSICAL INFRASTRUCTURE COMPONENT ARRAYS
+        # 1. Retrieve Core Physical Infrastructure Component Arrays
         try:
             async with self.session.get(devices_url, headers=headers, timeout=10) as response:
                 if response.status == 401:
@@ -177,21 +184,19 @@ class GardenaApiManager:
             _LOGGER.error("Fatal network exception generated fetching remote device infrastructure tree: %s", err)
             raise
 
-        # 2. RETRIEVE CLOUD SMARTLETS RUNTIME AND STATE CONSTRAINTS METRICS
+        # 2. Retrieve Cloud Smartlets Runtime and State Constraints Metrics
         if self._first_device_id:
             smartlets_url = f"https://bff-api.sg.dss.husqvarnagroup.net/v1/locations/{location_id}/smartlets?device_id={self._first_device_id}"
             try:
                 async with self.session.get(smartlets_url, headers=headers, timeout=10) as resp:
                     if resp.status == 200:
                         smartlets_data = await resp.json()
-                        # FIXED: Verified from HAR schema that elements reside inside a nested structural 'data' block array
                         smartlets_list = smartlets_data.get("data", [])
                     else:
                         _LOGGER.debug("Smartlets operational parameters query returned unhandled response status: %s", resp.status)
             except Exception as smartlet_err:
                 _LOGGER.error("Background asynchronous polling thread failed capturing remote device smartlets maps data: %s", smartlet_err)
 
-        # Return synthesized dictionary to be parsed by downstream system platforms
         return {
             "devices": devices_list,
             "smartlets": smartlets_list
@@ -229,6 +234,7 @@ class GardenaApiManager:
             async with self.session.post(url, json=payload, headers=headers, timeout=10) as response:
                 if response.status == 401:
                     await self.async_authenticate()
+                    # FIXED: Added missing live header injection mapping upon token refresh cycle retry executions
                     headers["Authorization"] = f"Bearer {self._token}"
                     await self.session.post(url, json=payload, headers=headers, timeout=10)
                 elif response.status not in [200, 202]:

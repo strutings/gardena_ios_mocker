@@ -14,7 +14,7 @@ from .const import DOMAIN, CLIENT_ID
 _LOGGER = logging.getLogger(__name__)
 
 def decode_user_id_from_jwt(token: str) -> str | None:
-    """Decodes the JWT token locally in memory to extract the unique user ID."""
+    """Decode the JWT token locally in memory to extract the unique user ID."""
     try:
         if not token or "." not in token:
             return None
@@ -33,13 +33,14 @@ def decode_user_id_from_jwt(token: str) -> str | None:
         return None
 
 async def async_get_location_id(username: str, password: str) -> str | None:
-    """Fetches the location ID dynamically by parsing the BFF response correctly as a list or dict."""
+    """Fetch the location ID dynamically by parsing the BFF response."""
+    access_token = None  # FIXED: Initialized here to prevent UnboundLocalError on login failures
     
     auth_headers = {
         "Content-Type": "application/x-www-form-urlencoded",
         "Accept": "application/json",
         "Accept-Language": "en-US;q=1.0, en;q=0.9",
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
     }
 
     async with aiohttp.ClientSession() as session:
@@ -79,7 +80,7 @@ async def async_get_location_id(username: str, password: str) -> str | None:
                 "X-Api-Key": str(CLIENT_ID),
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15"
+                "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15"
             }
 
             url = "https://bff-api.sg.dss.husqvarnagroup.net/v1/locations"
@@ -96,7 +97,6 @@ async def async_get_location_id(username: str, password: str) -> str | None:
                     raw_data = json.loads(resp_text)
                     locations_list = []
                     
-                    # Check the structure dynamically to avoid KeyError
                     if isinstance(raw_data, list):
                         locations_list = raw_data
                     elif isinstance(raw_data, dict):
@@ -119,7 +119,7 @@ async def async_get_location_id(username: str, password: str) -> str | None:
 
 
 class GardenaIosMockerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handles the configuration flow for Gardena iOS Mocker."""
+    """Handle the configuration flow for Gardena iOS Mocker."""
 
     VERSION = 1
 

@@ -24,25 +24,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         device_name = device.get("name")
         abilities = device.get("abilities", [])
         
-        # 1. GENERATE MOWER SWITCHES
+        # 1. Generate mower configuration switches
         for ability in abilities:
             if not isinstance(ability, dict):
                 continue
             if ability.get("type") == "robotic_mower":
-                entities.append(GardenaMowerConfigSwitch(coordinator, device_id, device_name, "eco_mode", "Eco Mode", "mdi:leaf", entry))
-                entities.append(GardenaMowerConfigSwitch(coordinator, device_id, device_name, "mower_house", "Garage Protection", "mdi:garage-open", entry))
-                entities.append(GardenaMowerConfigSwitch(coordinator, device_id, device_name, "frost_sensor", "Frost Sensor (Device)", "mdi:snowflake-alert", entry))
+                entities.append(GardenaMowerConfigSwitch(coordinator, device_id, device_name, "eco_mode", "mdi:leaf", entry))
+                entities.append(GardenaMowerConfigSwitch(coordinator, device_id, device_name, "mower_house", "mdi:garage-open", entry))
+                entities.append(GardenaMowerConfigSwitch(coordinator, device_id, device_name, "frost_sensor", "mdi:snowflake-alert", entry))
                 break
 
-        # 2. GENERATE IRRIGATION SWITCHES
+        # 2. Generate irrigation control switches
         for ability in abilities:
             if not isinstance(ability, dict):
                 continue
             if ability.get("type") == "watering":
-                _LOGGER.info("Registering irrigation switches for: %s", device_name)
+                _LOGGER.info("Registering irrigation switches for device: %s", device_name)
                 entities.append(GardenaWateringSwitch(coordinator, device, ability, entry))
-                entities.append(GardenaWateringSmartletSwitch(coordinator, device_id, device_name, "smartlet-rain-forecast", "Smartlet Weather Protection", "mdi:cloud-percent", entry))
-                entities.append(GardenaWateringSmartletSwitch(coordinator, device_id, device_name, "smartlet-sensor", "Smartlet Soil Moisture Control", "mdi:water-percent", entry))
+                entities.append(GardenaWateringSmartletSwitch(coordinator, device_id, device_name, "smartlet_rain_forecast", "mdi:cloud-percent", entry))
+                entities.append(GardenaWateringSmartletSwitch(coordinator, device_id, device_name, "smartlet_sensor", "mdi:water-percent", entry))
 
     async_add_entities(entities)
 
@@ -50,8 +50,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class GardenaMowerConfigSwitch(CoordinatorEntity, SwitchEntity):
     """Switch to toggle configuration flags on the mower (settings endpoint)."""
 
-    def __init__(self, coordinator, device_id, device_name, config_key, name_suffix, icon, entry) -> None:
-        """Initialize the mower config configuration entity."""
+    has_entity_name = True
+
+    def __init__(self, coordinator, device_id, device_name, config_key, icon, entry) -> None:
+        """Initialize the mower configuration switch entity."""
         super().__init__(coordinator)
         self._device_id = device_id
         self._device_name = device_name
@@ -59,12 +61,12 @@ class GardenaMowerConfigSwitch(CoordinatorEntity, SwitchEntity):
         self._entry = entry
         
         self._attr_unique_id = f"{device_id}_mower_switch_{config_key}_real_api"
-        self._attr_name = f"{device_name} {name_suffix}"
+        self._attr_translation_key = config_key
         self._attr_icon = icon
 
     @property
     def is_on(self) -> bool:
-        """Return True if the option flag configuration is enabled."""
+        """Return True if the specific configuration flag is enabled."""
         devices = self.coordinator.data.get("devices", []) if isinstance(self.coordinator.data, dict) else []
         for d in devices:
             if isinstance(d, dict) and d.get("id") == self._device_id:
@@ -74,9 +76,11 @@ class GardenaMowerConfigSwitch(CoordinatorEntity, SwitchEntity):
         return False
 
     async def _update_mower_config(self, target_state: bool) -> None:
-        """Transmit mower option parameter mutations down to the endpoint server path."""
+        """Transmit mower option parameter mutations down to the backend server path."""
         manager = self.coordinator.api_manager
-        token = manager._token
+        
+        # FIXED: Force dynamic authentication refresh if local token context expired
+        token = await manager.async_authenticate() if not manager._token else manager._token
         location_id = self._entry.data["location_id"]
         setting_id = None
         
@@ -89,9 +93,10 @@ class GardenaMowerConfigSwitch(CoordinatorEntity, SwitchEntity):
                         break
                         
         if not setting_id: 
+            _LOGGER.error("Failed to find setting_id for configuration key: %s", self._config_key)
             return
             
-        url = f"https://bff-api.sg.dss.husqvarnagroup.net/v1/locations/{location_id}/settings/{setting_id}"
+        url = f"https://bff-api.sg.dss.husqvarnagroup.net/v1/devices/{self._device_id}/settings/{setting_id}?locationId={location_id}"
         payload = {"settings": {"name": self._config_key, "value": target_state, "device": self._device_id}}
         headers = {
             "Authorization": f"Bearer {token}", 
@@ -101,10 +106,19 @@ class GardenaMowerConfigSwitch(CoordinatorEntity, SwitchEntity):
         }
         try:
             async with manager.session.put(url, json=payload, headers=headers, timeout=10) as response:
-                if response.status in [200, 202, 204]: 
+                if response.status == 401:
+                    token = await manager.async_authenticate()
+                    headers["Authorization"] = f"Bearer {token}"
+                    async with manager.session.put(url, json=payload, headers=headers, timeout=10) as retry_resp:
+                        if retry_resp.status in [200, 202, 204]:
+                            self.hass.async_create_task(self.coordinator.async_request_refresh())
+                elif response.status in [200, 202, 204]: 
                     self.hass.async_create_task(self.coordinator.async_request_refresh())
+                else:
+                    resp_txt = await response.text()
+                    _LOGGER.error("Mower config update failed for %s with status %s: %s", self._config_key, response.status, resp_txt)
         except Exception as err: 
-            _LOGGER.error("Error modifying mower switch configuration key %s: %s", self._config_key, err)
+            _LOGGER.error("Error modifying mower configuration key %s: %s", self._config_key, err)
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on."""
@@ -116,15 +130,17 @@ class GardenaMowerConfigSwitch(CoordinatorEntity, SwitchEntity):
 
     @property
     def device_info(self) -> dict[str, Any]:
-        """Return cross-platform link matching hooks tables."""
+        """Return cross-platform device link structure matching device registry hooks."""
         return {"identifiers": {(DOMAIN, self._device_id)}, "name": self._device_name}
 
 
 class GardenaWateringSmartletSwitch(CoordinatorEntity, SwitchEntity):
     """Switch to toggle cloud-based smartlet modules (Rain or Soil Sensor) with active polling fallback."""
 
-    def __init__(self, coordinator, device_id, device_name, smartlet_key, name_suffix, icon, entry) -> None:
-        """Initialize cloud cloud weather or automated soil boundary layers switch."""
+    has_entity_name = True
+
+    def __init__(self, coordinator, device_id, device_name, smartlet_key, icon, entry) -> None:
+        """Initialize cloud weather or automated soil boundary layers switch."""
         super().__init__(coordinator)
         self._device_id = device_id
         self._device_name = device_name
@@ -132,19 +148,21 @@ class GardenaWateringSmartletSwitch(CoordinatorEntity, SwitchEntity):
         self._entry = entry
         
         self._attr_unique_id = f"{device_id}_watering_smartlet_{smartlet_key}"
-        self._attr_name = f"{device_name} {name_suffix}"
+        self._attr_translation_key = smartlet_key
         self._attr_icon = icon
-        self._smartlet_id = f"{self._smartlet_key}_{self._device_id}_1"
+        
+        api_key = smartlet_key.replace("_", "-")
+        self._smartlet_id = f"{api_key}_{self._device_id}_1"
         self._live_status = None
 
     @property
     def should_poll(self) -> bool:
-        """Force Home Assistant to evaluate independent background network polling loops updates."""
+        """Force Home Assistant to evaluate independent background network polling loop updates."""
         return True
 
     @property
     def is_on(self) -> bool:
-        """Return live status boolean flag parsed from cloud data graphs streams."""
+        """Return live status boolean flag parsed from cloud data streams cache."""
         if self._live_status is not None:
             return self._live_status
 
@@ -158,7 +176,7 @@ class GardenaWateringSmartletSwitch(CoordinatorEntity, SwitchEntity):
     async def async_update(self) -> None:
         """Fetch fresh live status parameters directly from verified standalone smartlet endpoint."""
         manager = self.coordinator.api_manager
-        token = manager._token
+        token = await manager.async_authenticate() if not manager._token else manager._token
         location_id = self._entry.data["location_id"]
         
         url = f"https://bff-api.sg.dss.husqvarnagroup.net/v1/locations/{location_id}/smartlets/{self._smartlet_id}"
@@ -178,10 +196,10 @@ class GardenaWateringSmartletSwitch(CoordinatorEntity, SwitchEntity):
                     
                     self._live_status = enabled_state
                     
-                    if self._smartlet_key == "smartlet-rain-forecast":
+                    if self._smartlet_key == "smartlet_rain_forecast":
                         threshold = float(attributes.get("millimeters-threshold", 10.0))
                         self.hass.data[DOMAIN][f"{self._device_id}_rain_threshold"] = threshold
-                    elif self._smartlet_key == "smartlet-sensor":
+                    elif self._smartlet_key == "smartlet_sensor":
                         threshold = float(attributes.get("threshold", 50.0))
                         self.hass.data[DOMAIN][f"{self._device_id}_soil_threshold"] = threshold
                         
@@ -198,9 +216,9 @@ class GardenaWateringSmartletSwitch(CoordinatorEntity, SwitchEntity):
         await self._update_smartlet(False)
 
     async def _update_smartlet(self, enable: bool) -> None:
-        """Transmit specialized payload trees blocks to matching structural layout endpoints models mappings."""
+        """Transmit specialized payload trees blocks to matching structural layout endpoints."""
         manager = self.coordinator.api_manager
-        token = manager._token
+        token = await manager.async_authenticate() if not manager._token else manager._token
         location_id = self._entry.data["location_id"]
         
         url = f"https://bff-api.sg.dss.husqvarnagroup.net/v1/locations/{location_id}/smartlets/{self._smartlet_id}"
@@ -212,7 +230,6 @@ class GardenaWateringSmartletSwitch(CoordinatorEntity, SwitchEntity):
             "scope": "valve"
         }
         
-        # Dynamically locate soil moisture sensor reference ID linking maps properties table index variables hooks
         sensor_device_id = None
         devices = self.coordinator.data.get("devices", []) if isinstance(self.coordinator.data, dict) else []
         for d in devices:
@@ -227,10 +244,11 @@ class GardenaWateringSmartletSwitch(CoordinatorEntity, SwitchEntity):
             "location": { "data": { "type": "location", "id": str(location_id) } }
         }
 
-        if self._smartlet_key == "smartlet-rain-forecast":
+        api_type_key = self._smartlet_key.replace("_", "-")
+        if self._smartlet_key == "smartlet_rain_forecast":
             threshold = self.hass.data[DOMAIN].get(f"{self._device_id}_rain_threshold", 10.0)
             attributes_payload["millimeters-threshold"] = float(threshold)
-        elif self._smartlet_key == "smartlet-sensor":
+        elif self._smartlet_key == "smartlet_sensor":
             threshold = self.hass.data[DOMAIN].get(f"{self._device_id}_soil_threshold", 50.0)
             attributes_payload["threshold"] = int(threshold)
             relationships_payload["sensor"] = {
@@ -241,7 +259,7 @@ class GardenaWateringSmartletSwitch(CoordinatorEntity, SwitchEntity):
             "data": {
                 "attributes": attributes_payload,
                 "relationships": relationships_payload,
-                "type": str(self._smartlet_key)
+                "type": str(api_type_key)
             }
         }
 
@@ -263,27 +281,29 @@ class GardenaWateringSmartletSwitch(CoordinatorEntity, SwitchEntity):
 
     @property
     def device_info(self) -> dict[str, Any]:
-        """Link matching context maps elements branches strings pointers identifiers table arrays."""
+        """Link identifiers targeting down across matching node clusters branches trees elements."""
         return {"identifiers": {(DOMAIN, self._device_id)}, "name": self._device_name}
 
 
 class GardenaWateringSwitch(CoordinatorEntity, SwitchEntity):
     """Switch to start and stop valve irrigation loops channels manually."""
 
+    has_entity_name = True
+
     def __init__(self, coordinator, device, ability, entry) -> None:
-        """Initialize raw physical valve trigger component mapping switch variables attributes handles."""
+        """Initialize physical valve trigger components mapping variables attributes handles."""
         super().__init__(coordinator)
         self._device_id = device.get("id")
         self._device_name = device.get("name")
         self._entry = entry
         
         self._attr_unique_id = f"{self._device_id}_watering_switch"
-        self._attr_name = f"{device.get('name')} Irrigation"
+        self._attr_translation_key = "watering_switch"
         self._attr_icon = "mdi:water-pump"
 
     @property
     def is_on(self) -> bool:
-        """Return True if valve state machine reflects active state properties structures blocks."""
+        """Return True if valve state machine reflects active execution state properties."""
         devices = self.coordinator.data.get("devices", []) if isinstance(self.coordinator.data, dict) else []
         for d in devices:
             if isinstance(d, dict) and d.get("id") == self._device_id:
@@ -297,19 +317,19 @@ class GardenaWateringSwitch(CoordinatorEntity, SwitchEntity):
         return False
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Fetch preset sliders minutes durations limits and open valve loop array straight away."""
+        """Fetch preset slider minute durations limits and open the valve loop path directly."""
         duration_min = self.hass.data[DOMAIN].get(f"{self._device_id}_duration", 15)
         duration_sec = int(duration_min * 60)
         await self._send_watering_property_update("manual", duration_sec)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Force current opened valve iteration loop back down onto idle state boundaries configuration structures maps."""
+        """Force currently opened valve execution sequence back down into idle state boundaries."""
         await self._send_watering_property_update("idle", 0)
 
     async def _send_watering_property_update(self, target_state: str, duration_sec: int) -> None:
-        """Transmit raw valve state matrix attributes straight into properties trees maps layers nodes tables."""
+        """Transmit raw valve state matrix attributes straight into properties trees maps layers."""
         manager = self.coordinator.api_manager
-        token = manager._token
+        token = await manager.async_authenticate() if not manager._token else manager._token
         location_id = self._entry.data["location_id"]
         
         url = f"https://bff-api.sg.dss.husqvarnagroup.net/v1/devices/{self._device_id}/abilities/watering/properties/watering_timer_1?locationId={location_id}"
@@ -322,7 +342,7 @@ class GardenaWateringSwitch(CoordinatorEntity, SwitchEntity):
         }
         try:
             async with manager.session.put(url, json=payload, headers=headers, timeout=10) as response:
-                if response.status in [200, 202, 204]: 
+                if response.status in [200, 202, 204]:
                     devices = self.coordinator.data.get("devices", []) if isinstance(self.coordinator.data, dict) else []
                     for d in devices:
                         if isinstance(d, dict) and d.get("id") == self._device_id:
@@ -339,5 +359,5 @@ class GardenaWateringSwitch(CoordinatorEntity, SwitchEntity):
 
     @property
     def device_info(self) -> dict[str, Any]:
-        """Link matching context platform tracking metadata elements hooks arrays markers nodes descriptors tables blocks."""
+        """Link parameters attributes matching parent structures context maps descriptors hooks."""
         return {"identifiers": {(DOMAIN, self._device_id)}, "name": self._device_name, "manufacturer": "Gardena (Mocker)"}
