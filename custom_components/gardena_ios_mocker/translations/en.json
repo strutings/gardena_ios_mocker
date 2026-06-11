@@ -1,0 +1,67 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure Gardena iOS Mocker",
+        "description": "Enter your Gardena account credentials to automatically fetch your location and devices via the BFF API.",
+        "data": {
+          "username": "Email Address",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect to Gardena servers. Please check your credentials and network connection."
+    }
+  },
+  "entity": {
+    "switch": {
+      "eco_mode": {
+        "name": "Eco Mode"
+      },
+      "mower_house": {
+        "name": "Garage Protection"
+      },
+      "frost_sensor": {
+        "name": "Frost Sensor (Device)"
+      },
+      "watering_switch": {
+        "name": "Irrigation"
+      },
+      "smartlet-rain-forecast": {
+        "name": "Smartlet Weather Protection"
+      },
+      "smartlet-sensor": {
+        "name": "Smartlet Soil Moisture Control"
+      }
+    },
+    "number": {
+      "drive_past_wire": {
+        "name": "Drive Past Wire"
+      },
+      "starting_distance": {
+        "name": "Remote Start Distance"
+      },
+      "distance_in_meters": {
+        "name": "Starting Point Distance"
+      },
+      "probability_in_percent": {
+        "name": "Starting Point Proportion"
+      },
+      "irrigation_time": {
+        "name": "Irrigation Duration"
+      },
+      "smartlet_rain_threshold": {
+        "name": "Rain Weather Threshold"
+      },
+      "smartlet_soil_threshold": {
+        "name": "Soil Moisture Threshold"
+      }
+    },
+    "select": {
+      "smartlet_sensor_control": {
+        "name": "SensorControl"
+      }
+    }
+  }
+}

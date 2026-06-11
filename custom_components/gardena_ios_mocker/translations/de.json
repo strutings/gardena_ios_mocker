@@ -1,0 +1,47 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Gardena iOS Mocker konfigurieren",
+        "description": "Geben Sie Ihre Gardena-Kontodaten ein, um Ihren Standort und Ihre Geräte automatisch über die BFF-API abzurufen.",
+        "data": {
+          "username": "E-Mail-Adresse",
+          "password": "Passwort"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung mit den Gardena-Servern fehlgeschlagen. Bitte überprüfen Sie Benutzername, Passwort und Netzwerk."
+    }
+  },
+  "entity": {
+    "switch": {
+      "eco_mode": {
+        "name": "Eco-Modus"
+      },
+      "mower_house": {
+        "name": "Garagenschutz"
+      },
+      "watering_switch": {
+        "name": "Bewässerung"
+      }
+    },
+    "number": {
+      "drive_past_wire": {
+        "name": "Über das Schleifenkabel fahren"
+      },
+      "starting_distance": {
+        "name": "Fernstart Startentfernung"
+      },
+      "distance_in_meters": {
+        "name": "Startpunkt Entfernung"
+      },
+      "probability_in_percent": {
+        "name": "Startpunkt Verteilung"
+      },
+      "irrigation_time": {
+        "name": "Bewässerungsdauer"
+      }
+    }
+  }
+}

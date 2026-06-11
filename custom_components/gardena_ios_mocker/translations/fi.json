@@ -1,0 +1,47 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Määritä Gardena iOS Mocker",
+        "description": "Syötä Gardena-tilisi tunnistetiedot hakeaksesi sijaintisi ja laitteesi automaattisesti BFF-API:n kautta.",
+        "data": {
+          "username": "Sähköpostiosoite",
+          "password": "Salasana"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Yhteys Gardena-palvelimiin epäonnistui. Tarkista käyttäjätunnus, salasana ja verkko."
+    }
+  },
+  "entity": {
+    "switch": {
+      "eco_mode": {
+        "name": "Eco-tila"
+      },
+      "mower_house": {
+        "name": "Garasjasuoja"
+      },
+      "watering_switch": {
+        "name": "Kastelu"
+      }
+    },
+    "number": {
+      "drive_past_wire": {
+        "name": "Aja rajakaapelin yli"
+      },
+      "starting_distance": {
+        "name": "Etäkäynnistyksen aloitusetäisyys"
+      },
+      "distance_in_meters": {
+        "name": "Aloituspisteen etäisyys"
+      },
+      "probability_in_percent": {
+        "name": "Aloituspisteen osuus"
+      },
+      "irrigation_time": {
+        "name": "Kastelun kesto"
+      }
+    }
+  }
+}
