@@ -31,16 +31,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
             ability_type = ability.get("type")
 
             if ability_type == "robotic_mower":
-                entities.append(GardenaMowerConfigNumber(coordinator, device_id, device_name, "drive_past_wire", 1, 50, "cm", "mdi:arrow-expand-horizontal", entry))
-                entities.append(GardenaMowerConfigNumber(coordinator, device_id, device_name, "starting_distance", 0, 500, "m", "mdi:map-marker-distance", entry))
+                entities.append(GardenaMowerConfigNumber(coordinator, device_id, device_name, "drive_past_wire", 1, 50, 1, "cm", "mdi:arrow-expand-horizontal", entry))
+                entities.append(GardenaMowerConfigNumber(coordinator, device_id, device_name, "starting_distance", 0.2, 3.0, 0.1, "m", "mdi:map-marker-distance", entry))
                 
                 for i in range(3):
                     entities.append(GardenaMowerPointNumber(coordinator, device_id, device_name, i, "distance_in_meters", 0, 500, "m", "mdi:ray-start-arrow", entry))
                     entities.append(GardenaMowerPointNumber(coordinator, device_id, device_name, i, "probability_in_percent", 0, 100, "%", "mdi:percent", entry))
 
             elif ability_type == "watering":
-                _LOGGER.info("Creating irrigation settings parameters registry for device: %s", device_name)
-                
                 if f"{device_id}_duration" not in hass.data[DOMAIN]:
                     hass.data[DOMAIN][f"{device_id}_duration"] = 15
                 if f"{device_id}_rain_threshold" not in hass.data[DOMAIN]:
@@ -60,8 +58,7 @@ class GardenaMowerConfigNumber(CoordinatorEntity, NumberEntity):
 
     has_entity_name = True
 
-    def __init__(self, coordinator, device_id, device_name, config_key, min_val, max_val, unit, icon, entry) -> None:
-        """Initialize the mower configuration numerical entities framework handles."""
+    def __init__(self, coordinator, device_id, device_name, config_key, min_val, max_val, step, unit, icon, entry) -> None:
         super().__init__(coordinator)
         self._device_id = device_id
         self._device_name = device_name
@@ -72,14 +69,13 @@ class GardenaMowerConfigNumber(CoordinatorEntity, NumberEntity):
         self._attr_translation_key = config_key
         self._attr_native_min_value = min_val
         self._attr_native_max_value = max_val
-        self._attr_native_step = 1
+        self._attr_native_step = step
         self._attr_native_unit_of_measurement = unit
         self._attr_icon = icon
         self._attr_mode = NumberMode.BOX
 
     @property
     def native_value(self) -> float | None:
-        """Return the native numeric value extracted from the coordinator cache map pools."""
         devices = self.coordinator.data.get("devices", []) if isinstance(self.coordinator.data, dict) else []
         for d in devices:
             if isinstance(d, dict) and d.get("id") == self._device_id:
@@ -88,11 +84,32 @@ class GardenaMowerConfigNumber(CoordinatorEntity, NumberEntity):
                         return float(setting.get("value", 0))
         return None
 
+    # NYTT: Legger til kalkulert undertekst/info direkte som en attributt på avstands-slideren!
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return dynamic attributes including charging station proportion if this is starting_distance."""
+        if self._config_key != "starting_distance":
+            return None
+            
+        devices = self.coordinator.data.get("devices", []) if isinstance(self.coordinator.data, dict) else []
+        for d in devices:
+            if isinstance(d, dict) and d.get("id") == self._device_id:
+                for setting in d.get("settings", []):
+                    if isinstance(setting, dict) and setting.get("name") == "starting_points":
+                        points_list = setting.get("value", [])
+                        total_remote_pct = 0
+                        for point in points_list:
+                            if isinstance(point, dict):
+                                total_remote_pct += int(point.get("probability_in_percent", 0))
+                        
+                        return {
+                            "charging_station_proportion": f"{max(0, 100 - total_remote_pct)}%",
+                            "friendly_info": f"{max(0, 100 - total_remote_pct)}% started from charging station"
+                        }
+        return {"charging_station_proportion": "100%"}
+
     async def async_set_native_value(self, value: float) -> None:
-        """Transmit updated value configuration down to the cloud infrastructure platform service endpoint."""
         manager = self.coordinator.api_manager
-        
-        # FIXED: Secure live token verification loop
         token = await manager.async_authenticate() if not manager._token else manager._token
         location_id = self._entry.data["location_id"]
         setting_id = None
@@ -109,7 +126,8 @@ class GardenaMowerConfigNumber(CoordinatorEntity, NumberEntity):
             return
             
         url = f"https://bff-api.sg.dss.husqvarnagroup.net/v1/devices/{self._device_id}/settings/{setting_id}?locationId={location_id}"
-        payload = {"settings": {"name": self._config_key, "value": int(value), "device": self._device_id}}
+        payload_val = float(value) if self._config_key == "starting_distance" else int(value)
+        payload = {"settings": {"name": self._config_key, "value": payload_val, "device": self._device_id}}
         headers = {
             "Authorization": f"Bearer {token}",
             "Authorization-Provider": "husqvarna",
@@ -129,17 +147,15 @@ class GardenaMowerConfigNumber(CoordinatorEntity, NumberEntity):
 
     @property
     def device_info(self) -> dict[str, Any]:
-        """Return global device link markers descriptors linking across integration components."""
         return {"identifiers": {(DOMAIN, self._device_id)}, "name": self._device_name}
 
 
 class GardenaMowerPointNumber(CoordinatorEntity, NumberEntity):
-    """Numerical entity modifier to adjust specific starting points navigation variables blocks."""
+    """Numerical entity modifier to adjust specific starting points navigation variables."""
 
     has_entity_name = True
 
     def __init__(self, coordinator, device_id, device_name, index, sub_key, min_val, max_val, unit, icon, entry) -> None:
-        """Initialize remote start navigation segment points mapping configurations attributes."""
         super().__init__(coordinator)
         self._device_id = device_id
         self._device_name = device_name
@@ -158,7 +174,6 @@ class GardenaMowerPointNumber(CoordinatorEntity, NumberEntity):
 
     @property
     def native_value(self) -> float | None:
-        """Extract multi-indexed segment structural metadata out of backend dictionary properties tree."""
         devices = self.coordinator.data.get("devices", []) if isinstance(self.coordinator.data, dict) else []
         for d in devices:
             if isinstance(d, dict) and d.get("id") == self._device_id:
@@ -170,7 +185,6 @@ class GardenaMowerPointNumber(CoordinatorEntity, NumberEntity):
         return None
 
     async def async_set_native_value(self, value: float) -> None:
-        """Synchronize deep array parameter mutations down onto the remote infrastructure platform tree map."""
         manager = self.coordinator.api_manager
         token = await manager.async_authenticate() if not manager._token else manager._token
         location_id = self._entry.data["location_id"]
@@ -190,7 +204,7 @@ class GardenaMowerPointNumber(CoordinatorEntity, NumberEntity):
             return
             
         current_points[self._index][self._sub_key] = int(value)
-        url = f"https://bff-api.sg.dss.husqvarnagroup.net/v1/locations/{location_id}/settings/{setting_id}"
+        url = f"https://bff-api.sg.dss.husqvarnagroup.net/v1/devices/{self._device_id}/settings/{setting_id}?locationId={location_id}"
         payload = {"settings": {"name": "starting_points", "value": current_points, "device": self._device_id}}
         headers = {
             "Authorization": f"Bearer {token}",
@@ -211,7 +225,6 @@ class GardenaMowerPointNumber(CoordinatorEntity, NumberEntity):
 
     @property
     def device_info(self) -> dict[str, Any]:
-        """Return global device link markers descriptors linking across integration components platforms."""
         return {"identifiers": {(DOMAIN, self._device_id)}, "name": self._device_name}
 
 
@@ -221,7 +234,6 @@ class GardenaIrrigationTime(CoordinatorEntity, NumberEntity):
     has_entity_name = True
 
     def __init__(self, coordinator, device, ability, entry) -> None:
-        """Initialize localized state engine storage descriptors attributes parameter targets handles."""
         super().__init__(coordinator)
         self._device_id = device.get("id")
         self._device_name = device.get("name")
@@ -238,17 +250,14 @@ class GardenaIrrigationTime(CoordinatorEntity, NumberEntity):
 
     @property
     def native_value(self) -> float:
-        """Extract user-specified duration values straight from Home Assistant memory allocations."""
         return float(self.hass.data[DOMAIN].get(f"{self._device_id}_duration", 15))
 
     async def async_set_native_value(self, value: float) -> None:
-        """Update localized variable states inside local memory array blocks for instant workflow consumption."""
         self.hass.data[DOMAIN][f"{self._device_id}_duration"] = int(value)
         self.async_write_ha_state()
 
     @property
     def device_info(self) -> dict[str, Any]:
-        """Link parameters attributes matching parent structures context maps descriptors hooks."""
         return {"identifiers": {(DOMAIN, self._device_id)}, "name": self._device_name}
 
 
@@ -258,7 +267,6 @@ class GardenaRainThresholdNumber(CoordinatorEntity, NumberEntity):
     has_entity_name = True
 
     def __init__(self, coordinator, device_id, device_name, entry) -> None:
-        """Initialize weather forecast threshold control entity."""
         super().__init__(coordinator)
         self._device_id = device_id
         self._device_name = device_name
@@ -276,11 +284,9 @@ class GardenaRainThresholdNumber(CoordinatorEntity, NumberEntity):
 
     @property
     def native_value(self) -> float:
-        """Retrieve stored precipitation boundary state maps from internal state memory storage indexes."""
         return float(self.hass.data[DOMAIN].get(f"{self._device_id}_rain_threshold", 10.0))
 
     async def async_set_native_value(self, value: float) -> None:
-        """Transmit updated boundary metrics straight into cloud weather control parameters matrices endpoints paths."""
         self.hass.data[DOMAIN][f"{self._device_id}_rain_threshold"] = float(value)
         self.async_write_ha_state()
 
@@ -331,7 +337,6 @@ class GardenaRainThresholdNumber(CoordinatorEntity, NumberEntity):
 
     @property
     def device_info(self) -> dict[str, Any]:
-        """Link markers identifiers mapping down to core configuration nodes trees properties map tables."""
         return {"identifiers": {(DOMAIN, self._device_id)}, "name": self._device_name}
 
 
@@ -341,7 +346,6 @@ class GardenaSoilThresholdNumber(CoordinatorEntity, NumberEntity):
     has_entity_name = True
 
     def __init__(self, coordinator, device_id, device_name, entry) -> None:
-        """Initialize soil moisture automated parameters threshold controls configuration mapping objects."""
         super().__init__(coordinator)
         self._device_id = device_id
         self._device_name = device_name
@@ -359,11 +363,9 @@ class GardenaSoilThresholdNumber(CoordinatorEntity, NumberEntity):
 
     @property
     def native_value(self) -> float:
-        """Read target irrigation trigger metrics thresholds levels indices from shared cross-platform tables memory layers structures."""
         return float(self.hass.data[DOMAIN].get(f"{self._device_id}_soil_threshold", 50.0))
 
     async def async_set_native_value(self, value: float) -> None:
-        """Transmit raw matrix constraint boundaries parameters down straight into cloud storage endpoints vectors maps."""
         self.hass.data[DOMAIN][f"{self._device_id}_soil_threshold"] = float(value)
         self.async_write_ha_state()
 
@@ -424,5 +426,4 @@ class GardenaSoilThresholdNumber(CoordinatorEntity, NumberEntity):
 
     @property
     def device_info(self) -> dict[str, Any]:
-        """Link identifiers targeting down across matching node clusters branches trees elements tables blocks."""
         return {"identifiers": {(DOMAIN, self._device_id)}, "name": self._device_name}
