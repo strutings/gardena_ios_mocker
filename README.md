@@ -39,12 +39,12 @@ Below is a live rendering of the parameters mapped into the Home Assistant inter
 
 The easiest way to install and keep the Gardena iOS Mocker up to date is through HACS. Click the badge below to open the repository setup path directly inside your Home Assistant instance:
 
-[![Open your Home Assistant instance and open a repository in the Home Assistant Community Store.](https://my.homeassistant.io/badgelink/hacs_repository.svg)](https://my.homeassistant.io/redirect/hacs_repository/?owner=strutings&repository=gardena_ios_mocker&category=integration)
+[![Open your Home Assistant instance and open a repository in the Home Assistant Community Store.](https://my.homeassistant.io/badgelink/hacs_repository.svg)](https://my.homeassistant.io/redirect/hacs_repository/?owner=strutingd&repository=gardena_ios_lo mocker&category=integration)
 
 **Manual HACS Steps:**
 1. Open **HACS** from your Home Assistant sidebar.
 2. Click the three dots in the upper-right corner and select **Custom repositories**.
-3. Paste the repository URL: `https://github.com/skorstad/gardena_ios_mocker`
+3. Paste the repository URL: `https://github.com/strutings/gardena_ios_mocker`
 4. Set the Category to **Integration** and click **Add**.
 5. Locate "Gardena iOS Mocker" in the list, click **Download**, and restart Home Assistant.
 
