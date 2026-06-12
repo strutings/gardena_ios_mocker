@@ -144,7 +144,7 @@ class GardenaDynamicSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self):
-        devices = self.coordinator.data.get("devices", [])
+        devices = self.coordinator.data.get("devices", []) if self.coordinator.data else []
         for d in devices:
             if d.get("id") == self._device_id:
                 for ability in d.get("abilities", []):
@@ -154,16 +154,29 @@ class GardenaDynamicSensor(CoordinatorEntity, SensorEntity):
                                 val = prop.get("value")
                                 if isinstance(val, dict):
                                     val = val.get("main", str(val))
-                                if self._attr_device_class == SensorDeviceClass.TIMESTAMP and val:
-                                    try: return dt_util.parse_datetime(str(val))
-                                    except Exception: return val
+                                
+                                # HARD EPOCH FILTER: Guard against empty, zero, or epoch-based timestamp fallbacks
+                                if self._attr_device_class == SensorDeviceClass.TIMESTAMP:
+                                    if val in [None, "0", 0, ""]:
+                                        return None
+                                    
+                                    val_str = str(val)
+                                    if "1970" in val_str or "1969" in val_str:
+                                        return None
+                                        
+                                    try:
+                                        parsed_time = dt_util.parse_datetime(val_str)
+                                        if parsed_time and parsed_time.year <= 1970:
+                                            return None
+                                        return parsed_time
+                                    except Exception:
+                                        return None
                                 return val
         return None
 
     @property
     def device_info(self):
         return {"identifiers": {(DOMAIN, self._device_id)}, "name": self._device_name, "manufacturer": "Gardena (Mocker)"}
-
 
 class GardenaTimeToFullChargeSensor(CoordinatorEntity, SensorEntity):
     """Calculated countdown sensor showing remaining duration until full charge / next start."""
