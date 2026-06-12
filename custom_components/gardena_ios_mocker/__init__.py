@@ -247,6 +247,9 @@ class GardenaApiManager:
                     # FIXED: Added missing live header injection mapping upon token refresh cycle retry executions
                     headers["Authorization"] = f"Bearer {self._token}"
                     await self.session.post(url, json=payload, headers=headers, timeout=10)
+                # NEW HANDLING: Gracefully catch 429 Rate Limits to avoid flooding the error logs
+                elif response.status == 429:
+                    _LOGGER.warning("Command transaction %s rate limited by Gardena server (Status 429). Please wait a few moments before trying again.", command_id)
                 elif response.status not in [200, 202]:
                     resp_txt = await response.text()
                     _LOGGER.error("Command transaction %s rejected by infrastructure service node with status %s: %s", command_id, response.status, resp_txt)
