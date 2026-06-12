@@ -23,7 +23,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def async_get_gardena_data() -> dict[str, list[Any]]:
         """Fetch the combined data packet including devices and smartlets."""
         try:
-            return await gardena_manager.async_fetch_devices_and_smartlets()
+            data = await gardena_manager.async_fetch_devices_and_smartlets()
+            
+            # SECURE CHECK: Verify that the response packet is a valid, populated dictionary mapping
+            if data is None or not isinstance(data, dict):
+                raise UpdateFailed("Received an empty or invalid dictionary mapping tree from the backend endpoint path.")
+                
+            return data
         except Exception as err:
             raise UpdateFailed(f"Failed to update remote device infrastructure data packet: {err}") from err
 
@@ -170,7 +176,9 @@ class GardenaApiManager:
                 else:
                     data = await response.json()
                 
-                devices_list = data.get("devices", [])
+                # SECURE CHECK: Safeguard against empty or unexpected non-dictionary payloads from network path
+                if data and isinstance(data, dict):
+                    devices_list = data.get("devices", [])
                 
                 # Locate a valid parent machine boundary ID reference for nested relational lookups
                 for device in devices_list:
@@ -191,7 +199,9 @@ class GardenaApiManager:
                 async with self.session.get(smartlets_url, headers=headers, timeout=10) as resp:
                     if resp.status == 200:
                         smartlets_data = await resp.json()
-                        smartlets_list = smartlets_data.get("data", [])
+                        # SECURE CHECK: Safeguard against unexpected formatting in nested cloud responses
+                        if smartlets_data and isinstance(smartlets_data, dict):
+                            smartlets_list = smartlets_data.get("data", [])
                     else:
                         _LOGGER.debug("Smartlets operational parameters query returned unhandled response status: %s", resp.status)
             except Exception as smartlet_err:
