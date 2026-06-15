@@ -56,21 +56,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         if service == "start_override":
             duration = call.data.get("duration", 180)
-            # FIXED: Changed string logging interpolation to use 'duration' instead of non-existent 'target_state'
             _LOGGER.info("Executing service override command: start_override with duration %s min", duration)
-            await gardena_manager.async_send_raw_command("START", {"duration": int(duration)})
+            duration_sec = int(duration) * 60
+            await gardena_manager.async_send_mower_action("manual_start", {
+                "mowerTimer": duration_sec,
+                "startingPointDistance": None,
+                "areaId": None
+            })
             
         elif service == "start_automatic":
             _LOGGER.info("Executing service command: start_automatic schedule resume")
-            await gardena_manager.async_send_raw_command("START_RESUME_SCHEDULE")
+            # FIXED: Mutate settings endpoint to clear 'schedules_paused_until' block as captured in HAR trace
+            await gardena_manager.async_send_mower_setting("schedules_paused_until", "")
             
         elif service == "park_until_next_task":
-            _LOGGER.info("Executing service command: park_until_next_task")
-            await gardena_manager.async_send_raw_command("PARK_UNTIL_NEXT_TASK")
+            _LOGGER.info("Executing service command: park_until_next_task (park_until_next_schedule)")
+            await gardena_manager.async_send_mower_action("park_until_next_schedule", {})
             
         elif service == "park_until_further_notice":
-            _LOGGER.info("Executing service command: park_until_further_notice manual hold")
-            await gardena_manager.async_send_raw_command("PARK_UNTIL_FURTHER_NOTICE")
+            _LOGGER.info("Executing service command: park_until_further_notice manual hold via epoch suspension")
+            # FIXED: Mutate settings endpoint to push 'schedules_paused_until' into year 2040 as captured in HAR trace
+            await gardena_manager.async_send_mower_setting("schedules_paused_until", "2040-12-31T22:00:00.000Z")
 
         # Force an immediate data refresh cycle after transmitting runtime commands
         hass.async_create_task(coordinator.async_request_refresh())
@@ -115,6 +121,7 @@ class GardenaApiManager:
         self.session = async_get_clientsession(hass)
         self._token = None
         self._first_device_id = None
+        self._schedules_setting_id = None
 
     async def async_authenticate(self) -> str:
         """Provision a secure bearer access token against the OAuth2 security identity management service."""
@@ -180,14 +187,23 @@ class GardenaApiManager:
                 if data and isinstance(data, dict):
                     devices_list = data.get("devices", [])
                 
-                # Locate a valid parent machine boundary ID reference for nested relational lookups
+                # Locate a valid parent machine boundary ID reference and dynamically parse schedules setting ID mapping
                 for device in devices_list:
                     if not isinstance(device, dict):
                         continue
+                    
+                    is_mower = False
                     for ability in device.get("abilities", []):
                         if isinstance(ability, dict) and ability.get("type") == "robotic_mower":
+                            is_mower = True
                             self._first_device_id = device.get("id")
                             break
+                    
+                    if is_mower:
+                        for setting in device.get("settings", []):
+                            if isinstance(setting, dict) and setting.get("name") == "schedules_paused_until":
+                                self._schedules_setting_id = setting.get("id")
+                                break
         except Exception as err:
             _LOGGER.error("Fatal network exception generated fetching remote device infrastructure tree: %s", err)
             raise
@@ -212,8 +228,8 @@ class GardenaApiManager:
             "smartlets": smartlets_list
         }
 
-    async def async_send_raw_command(self, command_id: str, parameters: dict[str, Any] = None) -> None:
-        """Transmit structured runtime execution instructions maps down onto the central hardware gateway tree."""
+    async def async_send_mower_action(self, endpoint_command: str, payload: dict[str, Any]) -> None:
+        """Transmit action dispatches directly down to the dedicated mower commands POST endpoints based on HAR log mapping."""
         if not self._token:
             await self.async_authenticate()
             
@@ -221,15 +237,7 @@ class GardenaApiManager:
             await self.async_fetch_devices_and_smartlets()
 
         location_id = self.entry.data[CONF_LOCATION_ID]
-        url = f"https://bff-api.sg.dss.husqvarnagroup.net/v1/commands?locationId={location_id}"
-        
-        payload = {
-            "id": command_id,
-            "abilityId": "robotic_mower",
-            "deviceId": self._first_device_id
-        }
-        if parameters:
-            payload["parameters"] = parameters
+        url = f"https://bff-api.sg.dss.husqvarnagroup.net/v1/devices/{self._first_device_id}/abilities/mower/commands/{endpoint_command}?locationId={location_id}"
 
         headers = {
             "Authorization": f"Bearer {self._token}",
@@ -244,14 +252,58 @@ class GardenaApiManager:
             async with self.session.post(url, json=payload, headers=headers, timeout=10) as response:
                 if response.status == 401:
                     await self.async_authenticate()
-                    # FIXED: Added missing live header injection mapping upon token refresh cycle retry executions
                     headers["Authorization"] = f"Bearer {self._token}"
                     await self.session.post(url, json=payload, headers=headers, timeout=10)
-                # NEW HANDLING: Gracefully catch 429 Rate Limits to avoid flooding the error logs
                 elif response.status == 429:
-                    _LOGGER.warning("Command transaction %s rate limited by Gardena server (Status 429). Please wait a few moments before trying again.", command_id)
-                elif response.status not in [200, 202]:
+                    _LOGGER.warning("Mower action command '%s' was rate limited by the gateway (Status 429).", endpoint_command)
+                elif response.status not in [200, 202, 204]:
                     resp_txt = await response.text()
-                    _LOGGER.error("Command transaction %s rejected by infrastructure service node with status %s: %s", command_id, response.status, resp_txt)
+                    _LOGGER.error("Mower action '%s' rejected by cloud with status %s: %s", endpoint_command, response.status, resp_txt)
         except Exception as err:
-            _LOGGER.error("Network communication timeout exception intercepted while posting runtime directive parameters maps: %s", err)
+            _LOGGER.error("Network communication exception intercepted while firing mower action nodes: %s", err)
+
+    async def async_send_mower_setting(self, setting_name: str, value: str) -> None:
+        """Mutate specific device schedule settings states directly via the verified PUT endpoints mapped from the trace telemetry."""
+        if not self._token:
+            await self.async_authenticate()
+            
+        if not self._first_device_id or not self._schedules_setting_id:
+            await self.async_fetch_devices_and_smartlets()
+
+        if not self._schedules_setting_id:
+            _LOGGER.error("Cannot alter mower setting '%s' because target settings GUID payload mapping was not populated.", setting_name)
+            return
+
+        location_id = self.entry.data[CONF_LOCATION_ID]
+        url = f"https://bff-api.sg.dss.husqvarnagroup.net/v1/devices/{self._first_device_id}/settings/{self._schedules_setting_id}?locationId={location_id}"
+
+        payload = {
+            "settings": {
+                "name": setting_name,
+                "value": value,
+                "device": self._first_device_id
+            }
+        }
+
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+            "Authorization-Provider": "husqvarna",
+            "X-Api-Key": CLIENT_ID,
+            "X-Key": CLIENT_ID,
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15"
+        }
+
+        try:
+            async with self.session.put(url, json=payload, headers=headers, timeout=10) as response:
+                if response.status == 401:
+                    await self.async_authenticate()
+                    headers["Authorization"] = f"Bearer {self._token}"
+                    await self.session.put(url, json=payload, headers=headers, timeout=10)
+                elif response.status == 429:
+                    _LOGGER.warning("Mower settings shift '%s' was rate limited by the server gateway (Status 429).", setting_name)
+                elif response.status not in [200, 202, 204]:
+                    resp_txt = await response.text()
+                    _LOGGER.error("Mower setting mutation '%s' rejected by server with status %s: %s", setting_name, response.status, resp_txt)
+        except Exception as err:
+            _LOGGER.error("Network communication exception intercepted while updating mower context parameter nodes: %s", err)
