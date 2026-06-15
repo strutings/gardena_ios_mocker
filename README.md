@@ -1,7 +1,7 @@
 # ⚡ Gardena iOS Mocker integration for Home Assistant
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/badge/Version-1.5.2-emerald.svg?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-1.5.5-emerald.svg?style=for-the-badge)
 ![Maintained](https://img.shields.io/badge/Maintained%3F-Yes-emerald.svg?style=for-the-badge)
 
 An unofficial Home Assistant integration that interfaces directly with Gardena. This integration unlocks advanced controls, synchronous bi-directional cloud status updates, and deep configuration parameters previously exclusive to the official mobile application.
@@ -39,7 +39,7 @@ Below is a live rendering of the parameters mapped into the Home Assistant inter
 
 The easiest way to install and keep the Gardena iOS Mocker up to date is through HACS. Click the badge below to open the repository setup path directly inside your Home Assistant instance:
 
-[![Open your Home Assistant instance and open a repository in the Home Assistant Community Store.](https://my.homeassistant.io/badgelink/hacs_repository.svg)](https://my.homeassistant.io/redirect/hacs_repository/?owner=strutingd&repository=gardena_ios_lo mocker&category=integration)
+[![Open your Home Assistant instance and open a repository in the Home Assistant Community Store.](https://my.homeassistant.io/badgelink/hacs_repository.svg)](https://my.homeassistant.io/redirect/hacs_repository/?owner=strutings&repository=gardena_ios_lo mocker&category=integration)
 
 **Manual HACS Steps:**
 1. Open **HACS** from your Home Assistant sidebar.
