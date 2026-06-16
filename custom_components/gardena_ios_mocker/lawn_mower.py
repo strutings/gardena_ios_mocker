@@ -55,7 +55,7 @@ class GardenaMower(CoordinatorEntity, LawnMowerEntity):
         for d in devices:
             if d.get("id") == self._device_id:
                 
-                # 1. First check if the live ability status reports a specific active state
+                # 1. PRIORITY 1: Check live operational state first. This ALWAYS trumps background schedule status.
                 for ability in d.get("abilities", []):
                     if ability.get("type") == "robotic_mower":
                         for prop in ability.get("properties", []):
@@ -69,17 +69,25 @@ class GardenaMower(CoordinatorEntity, LawnMowerEntity):
 
                                 status_clean = status_str.strip().lower()
 
-                                # Explicitly catch 'ok_cutting' and map it to mowing activity
-                                if status_clean in ["mowing", "ok_cutting", "ok_cutting_timer_override", "cutting"]:
+                                # Explicitly capture movement and active states immediately
+                                if status_clean in ["mowing", "ok_cutting", "ok_cutting_timer_override", "cutting", "leaving", "ok_leaving"]:
                                     return LawnMowerActivity.MOWING
-                                elif status_clean in ["parked", "parked_timer", "parked_park_selected", "ok_charging", "charging", "completed"]:
-                                    return LawnMowerActivity.DOCKED
+                                elif status_clean in ["returning", "ok_returning"]:
+                                    return LawnMowerActivity.RETURNING
                                 elif status_clean in ["paused", "paused_timer"]:
                                     return LawnMowerActivity.PAUSED
                                 elif status_clean in ["error", "offline", "fatal_error", "needs_service"]:
                                     return LawnMowerActivity.ERROR
+                                elif status_clean in ["parked", "parked_timer", "parked_park_selected", "ok_charging", "charging", "completed"]:
+                                    # If it's physically parked, we can double-check if it's explicitly paused by the user
+                                    for setting in d.get("settings", []):
+                                        if setting.get("name") == "schedules_paused_until":
+                                            pause_val = setting.get("value")
+                                            if pause_val and len(str(pause_val).strip()) > 0:
+                                                return LawnMowerActivity.PAUSED
+                                    return LawnMowerActivity.DOCKED
 
-                # 2. If status is ambiguous, check if the schedule is actively paused via settings override
+                # 2. PRIORITY 2: Fallback to schedule check if no live status property was resolved
                 for setting in d.get("settings", []):
                     if setting.get("name") == "schedules_paused_until":
                         pause_val = setting.get("value")
