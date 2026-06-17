@@ -69,8 +69,12 @@ class GardenaMower(CoordinatorEntity, LawnMowerEntity):
 
                                 status_clean = status_str.strip().lower()
 
-                                # Explicitly capture movement and active states immediately
-                                if status_clean in ["mowing", "ok_cutting", "ok_cutting_timer_override", "cutting", "leaving", "ok_leaving"]:
+                                # Immediate priority for active charging and docking states to prevent pause overrides
+                                if status_clean in ["ok_charging", "charging", "parked", "parked_timer", "completed"]:
+                                    return LawnMowerActivity.DOCKED
+                                    
+                                # Explicitly capture movement and active cutting states
+                                elif status_clean in ["mowing", "ok_cutting", "ok_cutting_timer_override", "cutting", "leaving", "ok_leaving"]:
                                     return LawnMowerActivity.MOWING
                                 elif status_clean in ["returning", "ok_returning"]:
                                     return LawnMowerActivity.RETURNING
@@ -78,8 +82,8 @@ class GardenaMower(CoordinatorEntity, LawnMowerEntity):
                                     return LawnMowerActivity.PAUSED
                                 elif status_clean in ["error", "offline", "fatal_error", "needs_service"]:
                                     return LawnMowerActivity.ERROR
-                                elif status_clean in ["parked", "parked_timer", "parked_park_selected", "ok_charging", "charging", "completed"]:
-                                    # If it's physically parked, we can double-check if it's explicitly paused by the user
+                                elif status_clean in ["parked_park_selected"]:
+                                    # If explicitly parked via command, verify if it's a manual infinite pause hold
                                     for setting in d.get("settings", []):
                                         if setting.get("name") == "schedules_paused_until":
                                             pause_val = setting.get("value")

@@ -1,7 +1,7 @@
 # ⚡ Gardena iOS Mocker integration for Home Assistant
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/badge/Version-1.5.5-emerald.svg?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-1.5.7-emerald.svg?style=for-the-badge)
 ![Maintained](https://img.shields.io/badge/Maintained%3F-Yes-emerald.svg?style=for-the-badge)
 
 An unofficial Home Assistant integration that interfaces directly with Gardena. This integration unlocks advanced controls, synchronous bi-directional cloud status updates, and deep configuration parameters previously exclusive to the official mobile application.
