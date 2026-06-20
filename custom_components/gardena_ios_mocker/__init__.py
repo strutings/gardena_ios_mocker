@@ -17,6 +17,7 @@ _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = ["sensor", "binary_sensor", "lawn_mower", "number", "switch", "select"]
 
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Gardena iOS Mocker integration instance from a ConfigEntry."""
     gardena_manager = GardenaApiManager(hass, entry)
@@ -31,17 +32,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.debug("Coordinator fetching fresh device infrastructure data packet from cloud.")
             data = await gardena_manager.async_fetch_devices_and_smartlets()
             
-            # SECURE CHECK: Verify that the response packet is a valid, populated dictionary mapping
-            if data and isinstance(data, dict) and (data.get("devices") or data.get("smartlets")):
-                # Update local cache memory core on successful transactions
+            # STRICT CHECK: Ensure data is a populated dictionary AND actually contains devices inside the tree
+            if data and isinstance(data, dict) and data.get("devices") and len(data["devices"]) > 0:
+                # Update local cache memory core on successful, non-empty transactions
                 last_successful_data = data
                 return data
                 
-            raise ValueError("Cloud gateway returned an empty or unmappable object tree.")
+            # TOKEN FLUSH: If the cloud returns an empty/stripped tree, the session might be soft-expired.
+            # We nullify the token so the very next polling cycle is forced to re-authenticate from scratch.
+            _LOGGER.debug("Empty or unmappable tree received. Invalidating OAuth2 token cache to force re-auth.")
+            gardena_manager.invalidate_token()
+            raise ValueError("Cloud gateway returned an empty, stripped, or unmappable object tree.")
             
         except Exception as err:
-            # SOFT FALLBACK: If the cloud drops out, timeout, or responds with 5xx, logging a warning and reuse last data frame
-            if last_successful_data and last_successful_data.get("devices"):
+            # SOFT FALLBACK: Reuse last known state frame on transmission errors to preserve dashboard rendering
+            if last_successful_data and last_successful_data.get("devices") and len(last_successful_data["devices"]) > 0:
                 _LOGGER.warning(
                     "Temporary cloud communication fault intercepted: %s. Reusing cached device metrics frame to maintain stability.",
                     err
@@ -55,7 +60,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER,
         name="Gardena iOS Devices",
         update_method=async_get_gardena_data,
-        update_interval=timedelta(seconds=60),
+        # BALANCED INTERVALL: Spør serveren hvert 3. minutt for å unngå rate limiting
+        update_interval=timedelta(seconds=180),
     )
 
     coordinator.api_manager = gardena_manager
@@ -66,12 +72,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-
     # --- CENTRALLY MANAGED CORE SYSTEM SERVICES ---
     async def handle_mower_service(call: ServiceCall) -> None:
         """Handle execution workflows triggered by centralized custom mower services."""
         service = call.service
         
+        if service == "force_update":
+            _LOGGER.info("Executing service command: force_update. Flushing token and requesting deep cloud sync.")
+            gardena_manager.invalidate_token()
+            await coordinator.async_request_refresh()
+            return
+
         if service == "start_override":
             duration = call.data.get("duration", 180)
             _LOGGER.info("Executing service override command: start_override with duration %s min", duration)
@@ -84,7 +95,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             
         elif service == "start_automatic":
             _LOGGER.info("Executing service command: start_automatic schedule resume")
-            # FIXED: Mutate settings endpoint to clear 'schedules_paused_until' block as captured in HAR trace
             await gardena_manager.async_send_mower_setting("schedules_paused_until", "")
             
         elif service == "park_until_next_task":
@@ -93,13 +103,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             
         elif service == "park_until_further_notice":
             _LOGGER.info("Executing service command: park_until_further_notice manual hold via epoch suspension")
-            # FIXED: Mutate settings endpoint to push 'schedules_paused_until' into year 2040 as captured in HAR trace
             await gardena_manager.async_send_mower_setting("schedules_paused_until", "2040-12-31T22:00:00.000Z")
 
         # Force an immediate data refresh cycle after transmitting runtime commands
         hass.async_create_task(coordinator.async_request_refresh())
 
-    # FIXED: Added schema verification definitions for the override duration parameters block
+    # Register services
     hass.services.async_register(
         DOMAIN, 
         "start_override", 
@@ -113,6 +122,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_register(DOMAIN, "start_automatic", handle_mower_service)
     hass.services.async_register(DOMAIN, "park_until_next_task", handle_mower_service)
     hass.services.async_register(DOMAIN, "park_until_further_notice", handle_mower_service)
+    hass.services.async_register(DOMAIN, "force_update", handle_mower_service)
 
     return True
 
@@ -126,6 +136,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_remove(DOMAIN, "start_automatic")
         hass.services.async_remove(DOMAIN, "park_until_next_task")
         hass.services.async_remove(DOMAIN, "park_until_further_notice")
+        hass.services.async_remove(DOMAIN, "force_update")
     return unload_ok
 
 
@@ -145,6 +156,11 @@ class GardenaApiManager:
         self._command_lock = asyncio.Lock()
         self._last_command_fingerprint = None
         self._last_command_timestamp = 0.0
+
+    def invalidate_token(self) -> None:
+        """Forcefully flush the cached token to guarantee the next API operation re-authenticates."""
+        _LOGGER.debug("Gardena OAuth2 token cache has been forcefully invalidated.")
+        self._token = None
 
     async def async_authenticate(self) -> str:
         """Provision a secure bearer access token against the OAuth2 security identity management service."""
@@ -197,7 +213,6 @@ class GardenaApiManager:
         devices_list = []
         smartlets_list = []
 
-        # 1. Retrieve Core Physical Infrastructure Component Arrays
         try:
             async with self.session.get(devices_url, headers=headers, timeout=10) as response:
                 if response.status == 401:
@@ -209,11 +224,9 @@ class GardenaApiManager:
                 else:
                     data = await response.json()
                 
-                # SECURE CHECK: Safeguard against empty or unexpected non-dictionary payloads from network path
                 if data and isinstance(data, dict):
                     devices_list = data.get("devices", [])
                 
-                # Locate a valid parent machine boundary ID reference and dynamically parse schedules setting ID mapping
                 for device in devices_list:
                     if not isinstance(device, dict):
                         continue
@@ -234,7 +247,6 @@ class GardenaApiManager:
             _LOGGER.error("Fatal network exception generated fetching remote device infrastructure tree: %s", err)
             raise
 
-        # 2. Retrieve Cloud Smartlets Runtime and State Constraints Metrics
         if self._first_device_id:
             smartlets_url = f"https://bff-api.sg.dss.husqvarnagroup.net/v1/locations/{location_id}/smartlets?device_id={self._first_device_id}"
             try:
@@ -258,14 +270,12 @@ class GardenaApiManager:
         current_time = time.time()
         command_fingerprint = f"action_{endpoint_command}_{str(payload)}"
 
-        # 1. DEBOUNCE FILTER: Prevent identical repetitive transactions firing inside a tight 3.0-second safety envelope
         if command_fingerprint == self._last_command_fingerprint and (current_time - self._last_command_timestamp) < 3.0:
             _LOGGER.info("Anti-spam execution guard activated: Suppressed duplicate mower action payload targeting '%s' to block gateway 429 rate-limits.", endpoint_command)
             return
 
-        # 2. CONCURRENT TRANSACTION LOCK FENCE: Block overlapping requests while server pipelines are still processing an active operation
         if self._command_lock.locked() and command_fingerprint == self._last_command_fingerprint:
-            _LOGGER.debug("Suppressed concurrent request delivery frame for action execution '%s' - previous remote server network frame transaction is still processing.", endpoint_command)
+            _LOGGER.debug("Suppressed concurrent request delivery frame for action execution '%s' - locked.", endpoint_command)
             return
 
         async with self._command_lock:
@@ -306,7 +316,6 @@ class GardenaApiManager:
                         _LOGGER.error("Mower action '%s' rejected by cloud with status %s: %s", endpoint_command, response.status, resp_txt)
             except Exception as err:
                 _LOGGER.error("Fatal exception inside action execution lock for '%s': %s", endpoint_command, err)
-                # Reset timestamp on error to allow an immediate retry
                 self._last_command_timestamp = 0.0
 
     async def async_send_mower_setting(self, setting_name: str, value: str) -> None:
@@ -314,14 +323,12 @@ class GardenaApiManager:
         current_time = time.time()
         setting_fingerprint = f"setting_{setting_name}_{str(value)}"
 
-        # 1. DEBOUNCE FILTER: Prevent identical repetitive transactions firing inside a tight 3.0-second safety envelope
         if setting_fingerprint == self._last_command_fingerprint and (current_time - self._last_command_timestamp) < 3.0:
             _LOGGER.info("Anti-spam execution guard activated: Suppressed duplicate mower setting alteration targeting '%s' to block gateway 429 rate-limits.", setting_name)
             return
 
-        # 2. CONCURRENT TRANSACTION LOCK FENCE: Block overlapping requests while server pipelines are still processing an active operation
         if self._command_lock.locked() and setting_fingerprint == self._last_command_fingerprint:
-            _LOGGER.debug("Suppressed concurrent request delivery frame for setting alteration '%s' - previous remote server network frame transaction is still processing.", setting_name)
+            _LOGGER.debug("Suppressed concurrent request delivery frame for setting alteration '%s' - locked.", setting_name)
             return
 
         async with self._command_lock:
