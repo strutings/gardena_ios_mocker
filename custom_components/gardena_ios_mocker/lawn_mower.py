@@ -73,11 +73,13 @@ class GardenaMower(CoordinatorEntity, LawnMowerEntity):
                                 if status_clean in ["ok_charging", "charging", "parked", "parked_timer", "completed"]:
                                     return LawnMowerActivity.DOCKED
                                     
-                                # Explicitly capture movement and active cutting states
-                                elif status_clean in ["mowing", "ok_cutting", "ok_cutting_timer_override", "cutting", "leaving", "ok_leaving"]:
-                                    return LawnMowerActivity.MOWING
-                                elif status_clean in ["returning", "ok_returning"]:
+                                # Explicitly capture searching and returning states BEFORE generic active catch-alls
+                                elif status_clean in ["returning", "ok_returning", "searching", "ok_searching", "leaving", "ok_leaving"]:
                                     return LawnMowerActivity.RETURNING
+                                    
+                                # Explicitly capture movement and active cutting states
+                                elif status_clean in ["mowing", "ok_cutting", "ok_cutting_timer_override", "cutting"]:
+                                    return LawnMowerActivity.MOWING
                                 elif status_clean in ["paused", "paused_timer"]:
                                     return LawnMowerActivity.PAUSED
                                 elif status_clean in ["error", "offline", "fatal_error", "needs_service"]:
@@ -90,6 +92,10 @@ class GardenaMower(CoordinatorEntity, LawnMowerEntity):
                                             if pause_val and len(str(pause_val).strip()) > 0:
                                                 return LawnMowerActivity.PAUSED
                                     return LawnMowerActivity.DOCKED
+                                
+                                # Catch-all safety net for active states: If any other operational "ok_" state is transmitted, classify as active mowing
+                                elif status_clean.startswith("ok_") or status_clean in ["manual", "override"]:
+                                    return LawnMowerActivity.MOWING
 
                 # 2. PRIORITY 2: Fallback to schedule check if no live status property was resolved
                 for setting in d.get("settings", []):
